@@ -1,0 +1,17 @@
+{
+  "skill_name": "openai_v2_integrator",
+  "evals": [
+    {
+      "id": 0,
+      "prompt": "Write a PHP function using wp_remote_post that sends a user's message to an existing OpenAI Thread, runs the Assistant on that Thread, and then securely polls the run status until it completes, returning the final answer.",
+      "expected_output": "PHP code demonstrating the v2 beta header, thread message creation, run creation, and a secure polling loop handling WP_Error and the 'completed' status.",
+      "files": []
+    },
+    {
+      "id": 1,
+      "prompt": "Write the PHP function to upload a local PDF coaching module directly into an OpenAI Vector Store using the V2 API.",
+      "expected_output": "PHP code using the /v1/vector_stores/{vector_store_id}/files endpoint, v2 headers, handling multipart form data with wp_remote_post, and checking the upload status.",
+      "files": []
+    }
+  ]
+}

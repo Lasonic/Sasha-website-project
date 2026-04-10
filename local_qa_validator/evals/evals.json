@@ -1,0 +1,17 @@
+{
+  "skill_name": "local_qa_validator",
+  "evals": [
+    {
+      "id": 0,
+      "prompt": "Run a QA pass on the local environment using the browser_subagent. Navigate to the chat widget, type 'Hello', and verify the 'loading' state appears in the DOM without any console errors being thrown.",
+      "expected_output": "The agent should invoke the browser_subagent with strict instructions to navigate, interact with the widget, check the DOM for the loading state class/attribute, and assert console cleanliness.",
+      "files": []
+    },
+    {
+      "id": 1,
+      "prompt": "Execute the standard regression test for an API failure. Instruct the browser_subagent to simulate or observe a network failure, and verify the UI gracefully enters the 'error' state rather than crashing silently.",
+      "expected_output": "The agent delegates the task to the browser_subagent, instructing it to look for the explicit error UI state, confirming the error is handled gracefully on the frontend.",
+      "files": []
+    }
+  ]
+}

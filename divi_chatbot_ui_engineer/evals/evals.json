@@ -1,0 +1,17 @@
+{
+  "skill_name": "divi_chatbot_ui_engineer",
+  "evals": [
+    {
+      "id": 0,
+      "prompt": "Create the base HTML structural skeleton for the chatbot widget and the Vanilla CSS file. Ensure the CSS exclusively uses variables for colors, fonts, and borders so it can be easily themed in Divi later.",
+      "expected_output": "Semantic HTML layout and a CSS file heavily utilizing :root CSS variables for all visual properties to prevent hardcoding styles.",
+      "files": []
+    },
+    {
+      "id": 1,
+      "prompt": "Write the vanilla JS class 'ChatController' that handles the transition between 'idle', 'loading', and 'error' states when a user submits a message, including updating the DOM appropriately.",
+      "expected_output": "A Vanilla JS class managing state transitions, using data attributes or class toggles to update the UI without relying on heavy frameworks.",
+      "files": []
+    }
+  ]
+}

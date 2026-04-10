@@ -1,0 +1,17 @@
+{
+  "skill_name": "wp_chatbot_architect",
+  "evals": [
+    {
+      "id": 0,
+      "prompt": "Create the main plugin file for the Sasha Chatbot and an Admin Settings page to securely store the OpenAI API Key and Assistant ID.",
+      "expected_output": "PHP code for the main plugin setup, enqueueing scripts, and a secure settings page that uses WordPress nonces and capabilities checks.",
+      "files": []
+    },
+    {
+      "id": 1,
+      "prompt": "Write the REST API endpoint that receives a public chat message, sanitizes the user prompt, and prepares it to be sent to OpenAI. Include error logging if something goes wrong.",
+      "expected_output": "PHP code using register_rest_route, sanitize_text_field, proper permission callback (public), and error logging.",
+      "files": []
+    }
+  ]
+}
