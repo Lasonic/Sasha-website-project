@@ -1,34 +1,70 @@
 ---
-name: openai_v2_integrator
-description: Use this skill whenever the user asks to integrate, build, or troubleshoot the OpenAI Assistants API V2 connection within their PHP application. This covers vector store ingestion, threading, message creation, runs, and polling/streaming logic using the v2 beta headers.
+name: openai-responses-integrator
+description: Use this skill whenever the user asks to integrate, build, or troubleshoot the OpenAI Responses API connection within their PHP WordPress plugin. This covers sending user messages via the /v1/responses endpoint, handling the normalized response, and implementing the ChatProviderInterface pattern. Use this skill for any OpenAI API work, even if the user says "chatbot API" or "AI provider" without naming the specific endpoint.
 ---
 
-# OpenAI Assistants API V2 Integrator
+# OpenAI Responses API Integrator
 
-You are the authoritative expert for integrating the OpenAI Assistants API V2 in PHP (specifically using WordPress native HTTP functions like `wp_remote_post` and `wp_remote_get`). Your job is to generate accurate, robust code that correctly follows the V2 lifecycle and never falls back to older V1 methods.
+You are the authoritative expert for integrating the OpenAI Responses API in PHP within a WordPress plugin context. Your job is to generate accurate, robust code that correctly uses the Responses API endpoint and fits cleanly behind a provider interface pattern.
+
+## Why Responses API (not Assistants V2)
+
+The Assistants API V2 requires managing Threads, Messages, Runs, and polling loops — unnecessary complexity for an MVP that only needs single-turn public guidance. The Responses API is a simpler, stateless request/response pattern. One POST, one answer. This is the right tool for the job.
 
 ## Core Rules & Constraints
 
-1. **V2 Headers Required:** Every request to the Assistants API MUST include the header: `'OpenAI-Beta' => 'assistants=v2'`.
-2. **Lifecycle Correctness:** Follow the strict V2 flow:
-   - Create a Thread.
-   - Add a Message to the Thread.
-   - Create a Run (running the Assistant on the Thread).
-   - Poll the Run status periodically until it reaches `completed`, `requires_action`, or `failed`.
-3. **Data Ingestion (Vector Stores):** For RAG (Retrieval-Augmented Generation), you must use the `/v1/vector_stores` and `/v1/vector_stores/{vector_store_id}/files` endpoints. Do not attach files via the legacy methods.
-4. **WordPress Context:** Use WordPress native `wp_remote_request()`, `wp_remote_post()`, and `wp_remote_get()` for external HTTP calls. Always handle `WP_Error` objects gracefully before decoding JSON.
-5. **Security:** Fetch the API key securely inside the function (e.g., via `get_option()`). Ensure error logs do not leak the API key.
+1. **Correct Endpoint:** All requests go to `POST https://api.openai.com/v1/responses`. Do NOT use `/v1/chat/completions` or `/v1/assistants`.
+2. **Provider Interface Pattern:** All OpenAI-specific code must implement a `ChatProviderInterface` with a single normalized method: `send_message( $message, $context ): ChatResult`. The rest of the plugin never touches OpenAI directly.
+3. **WordPress HTTP Functions:** Use `wp_remote_post()` for external HTTP calls. Always check for `WP_Error` before decoding JSON.
+4. **API Key Security:** Fetch the API key with this precedence:
+   - `SASHA_OPENAI_API_KEY` constant (defined in `wp-config.php` or environment)
+   - `get_option( 'sasha_chatbot_api_key' )` as fallback
+   - Never log, echo, or expose the key in any response.
+5. **Normalized Response:** Always return a `ChatResult` value object containing: `reply_text`, `ui_state`, `delivery_mode`, `conversation_id`, `error_code`, `trace_id`. The provider maps OpenAI's raw response into this shape.
+6. **Error Handling:** On provider failure (timeout, rate limit, bad key, malformed response), return a `ChatResult` with `ui_state: 'error'`, a safe `error_code`, and a unique `trace_id` for server-side log correlation. Never expose raw OpenAI error messages to the user.
 
-## Example Polling Pattern
+## Request Shape
 
-When instructing the model to pull the run status, remind it to use the proper v2 headers:
 ```php
-$url = "https://api.openai.com/v1/threads/{$thread_id}/runs/{$run_id}";
-$response = wp_remote_get( $url, array(
+$body = array(
+    'model'        => $model,        // e.g. 'gpt-4.1'
+    'instructions'  => $system_prompt, // system-level coaching instructions
+    'input'        => $user_message,  // the visitor's chat message
+);
+
+$response = wp_remote_post( 'https://api.openai.com/v1/responses', array(
     'headers' => array(
         'Authorization' => 'Bearer ' . $api_key,
-        'OpenAI-Beta'   => 'assistants=v2',
         'Content-Type'  => 'application/json',
-    )
+    ),
+    'body'    => wp_json_encode( $body ),
+    'timeout' => $timeout,
 ) );
 ```
+
+## Response Mapping
+
+Map the OpenAI response into a normalized `ChatResult`:
+
+```php
+$data = json_decode( wp_remote_retrieve_body( $response ), true );
+
+// The Responses API returns the output in $data['output']
+$reply_text = $data['output'][0]['content'][0]['text'] ?? '';
+
+return new ChatResult(
+    reply_text    : $reply_text,
+    ui_state      : 'answer',
+    delivery_mode : 'single',
+    conversation_id : $data['id'] ?? wp_generate_uuid4(),
+    error_code    : null,
+    trace_id      : $trace_id,
+);
+```
+
+## What NOT To Do
+
+- Do NOT create Threads or Runs. Those belong to the Assistants API, which we are not using.
+- Do NOT poll for status. The Responses API returns the complete answer in a single HTTP response.
+- Do NOT implement streaming unless the backend configuration explicitly requests it. MVP transport is single-response.
+- Do NOT hardcode the model. Read it from the plugin settings.

@@ -1,16 +1,16 @@
 {
-  "skill_name": "openai_v2_integrator",
+  "skill_name": "openai-responses-integrator",
   "evals": [
     {
       "id": 0,
-      "prompt": "Write a PHP function using wp_remote_post that sends a user's message to an existing OpenAI Thread, runs the Assistant on that Thread, and then securely polls the run status until it completes, returning the final answer.",
-      "expected_output": "PHP code demonstrating the v2 beta header, thread message creation, run creation, and a secure polling loop handling WP_Error and the 'completed' status.",
+      "prompt": "Write the ChatProviderInterface and the OpenAI Responses API provider class that implements it. The provider should send a user's message to the Responses API and return a normalized ChatResult object with reply_text, ui_state, delivery_mode, conversation_id, error_code, and trace_id.",
+      "expected_output": "A PHP interface with a single send_message method, a ChatResult value object, and a concrete provider class using wp_remote_post to POST to /v1/responses with proper headers. No Thread/Run lifecycle. Returns normalized ChatResult.",
       "files": []
     },
     {
       "id": 1,
-      "prompt": "Write the PHP function to upload a local PDF coaching module directly into an OpenAI Vector Store using the V2 API.",
-      "expected_output": "PHP code using the /v1/vector_stores/{vector_store_id}/files endpoint, v2 headers, handling multipart form data with wp_remote_post, and checking the upload status.",
+      "prompt": "Write the error handling for the OpenAI Responses API provider. If the API returns a timeout, a 429 rate limit, or a malformed response, the provider should return a ChatResult with ui_state 'error', a safe error_code, and a trace_id for log correlation. Never expose raw API error details to the caller.",
+      "expected_output": "PHP code checking for WP_Error, HTTP status codes, and JSON decode failures. Returns a ChatResult with ui_state='error', generic error_code, and unique trace_id. Logs the raw error server-side with the same trace_id.",
       "files": []
     }
   ]
