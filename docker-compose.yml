@@ -1,0 +1,74 @@
+
+services:
+  db:
+    image: mysql:8.0
+    restart: unless-stopped
+    environment:
+      MYSQL_ROOT_PASSWORD: rootpassword
+      MYSQL_DATABASE: wordpress
+      MYSQL_USER: wpuser
+      MYSQL_PASSWORD: wppassword
+    command: --default-authentication-plugin=mysql_native_password --require-secure-transport=OFF
+    volumes:
+      - db_data:/var/lib/mysql
+    ports:
+      - "3306:3306"
+    healthcheck:
+      test: ["CMD", "mysqladmin", "ping", "-h", "localhost", "-u", "wpuser", "-pwppassword"]
+      interval: 5s
+      timeout: 5s
+      retries: 20
+
+  wordpress:
+    image: wordpress:latest
+    restart: unless-stopped
+    depends_on:
+      db:
+        condition: service_healthy
+    ports:
+      - "8000:80"
+    environment:
+      WORDPRESS_DB_HOST: db:3306
+      WORDPRESS_DB_USER: wpuser
+      WORDPRESS_DB_PASSWORD: wppassword
+      WORDPRESS_DB_NAME: wordpress
+      WORDPRESS_DEBUG: "true"
+      # Provider API key available as environment variable inside the container.
+      # Override locally via .env file or export before docker compose up.
+      SASHA_OPENAI_API_KEY: "${SASHA_OPENAI_API_KEY:-}"
+    volumes:
+      # Mount the plugin source directly into wp-content/plugins for live editing.
+      - ./sasha-chatbot-plugin:/var/www/html/wp-content/plugins/sasha-chatbot
+      # Persist the full WordPress install so themes/settings survive restarts.
+      - wp_data:/var/www/html
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost/wp-login.php"]
+      interval: 10s
+      timeout: 5s
+      retries: 30
+      start_period: 30s
+
+  # WP-CLI sidecar for scripted setup (seed data, permalinks, plugin activation).
+  wpcli:
+    image: wordpress:cli
+    depends_on:
+      wordpress:
+        condition: service_healthy
+      db:
+        condition: service_healthy
+    environment:
+      WORDPRESS_DB_HOST: db:3306
+      WORDPRESS_DB_USER: wpuser
+      WORDPRESS_DB_PASSWORD: wppassword
+      WORDPRESS_DB_NAME: wordpress
+    volumes:
+      - ./sasha-chatbot-plugin:/var/www/html/wp-content/plugins/sasha-chatbot
+      - wp_data:/var/www/html
+      - ./docker/seed.sh:/seed.sh:ro
+    entrypoint: /bin/sh
+    command: /seed.sh
+    user: "33:33"  # www-data UID:GID to match WordPress file ownership
+
+volumes:
+  db_data:
+  wp_data:
