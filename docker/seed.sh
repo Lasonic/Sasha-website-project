@@ -49,6 +49,12 @@ echo "[seed] Activating sasha-chatbot plugin..."
 wp plugin activate sasha-chatbot 2>/dev/null || echo "[seed]   Plugin not found or already active — will retry on next boot."
 
 # ------------------------------------------------------------------
+# Activate the custom theme
+# ------------------------------------------------------------------
+echo "[seed] Activating sasha-theme..."
+wp theme activate sasha-theme 2>/dev/null || echo "[seed]   Theme not found or already active."
+
+# ------------------------------------------------------------------
 # Seed test page with chatbot shortcode (idempotent)
 # ------------------------------------------------------------------
 if ! wp post list --post_type=page --name=chatbot-test --field=ID 2>/dev/null | grep -q .; then
@@ -61,6 +67,13 @@ if ! wp post list --post_type=page --name=chatbot-test --field=ID 2>/dev/null | 
     --post_content='<!-- Sasha Chatbot mount point -->[sasha_chatbot]'
 else
   echo "[seed] Test page 'chatbot-test' already exists — skipping."
+fi
+
+PAGE_ID=$(wp post list --post_type=page --name=chatbot-test --field=ID)
+if [ -n "$PAGE_ID" ]; then
+  echo "[seed] Setting Chatbot Test as front page..."
+  wp option update show_on_front page 2>/dev/null || true
+  wp option update page_on_front "$PAGE_ID" 2>/dev/null || true
 fi
 
 # ------------------------------------------------------------------
@@ -90,4 +103,4 @@ fi
 echo "[seed] ✅ Seed complete. Site ready at http://localhost:8000"
 echo "[seed]    Admin: admin / admin"
 echo "[seed]    Test member: testmember / testpassword123"
-echo "[seed]    Chatbot page: http://localhost:8000/chatbot-test/"
+echo "[seed]    Landing page (with UI): http://localhost:8000/"

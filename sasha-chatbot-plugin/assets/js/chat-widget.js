@@ -54,22 +54,34 @@
             // Toggle button
             this.#root.insertAdjacentHTML( 'beforeend', `
                 <button class="sasha-chat-toggle" aria-expanded="false" aria-label="Open chat">
-                    <span class="sasha-chat-toggle__icon--open">💬</span>
-                    <span class="sasha-chat-toggle__icon--close">✕</span>
+                    <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="lucide lucide-message-circle"><path d="M7.9 20A9 9 0 1 0 4 16.1L2 22Z"/></svg>
                 </button>
             ` );
 
             // Chat window
             this.#root.insertAdjacentHTML( 'beforeend', `
                 <div class="sasha-chat-window" role="log" aria-live="polite">
-                    <div class="sasha-chat-header">Sasha Coaching</div>
+                    <div class="sasha-chat-header">
+                        <div class="sasha-chat-header-info">
+                            <p class="title">Financial Advisor</p>
+                            <p class="subtitle">We typically reply instantly</p>
+                        </div>
+                        <button class="sasha-chat-close" aria-label="Close chat">
+                            <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="lucide lucide-x"><path d="M18 6 6 18"/><path d="m6 6 12 12"/></svg>
+                        </button>
+                    </div>
                     <div class="sasha-chat-messages"></div>
+                    <div class="sasha-chat-quick-replies"></div>
                     <div class="sasha-chat-input-area">
-                        <input type="text"
-                               class="sasha-chat-input"
-                               placeholder="Ask me anything..."
-                               aria-label="Chat message" />
-                        <button class="sasha-chat-send" aria-label="Send message">➤</button>
+                        <div class="sasha-chat-input-wrapper">
+                            <input type="text"
+                                   class="sasha-chat-input"
+                                   placeholder="Type your question..."
+                                   aria-label="Chat message" />
+                        </div>
+                        <button class="sasha-chat-send" aria-label="Send message">
+                            <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="lucide lucide-send"><path d="m22 2-7 20-4-9-9-4Z"/><path d="M22 2 11 13"/></svg>
+                        </button>
                     </div>
                 </div>
             ` );
@@ -77,9 +89,13 @@
             // Cache references
             this.$toggle   = this.#root.querySelector( '.sasha-chat-toggle' );
             this.$window   = this.#root.querySelector( '.sasha-chat-window' );
+            this.$close    = this.#root.querySelector( '.sasha-chat-close' );
             this.$messages = this.#root.querySelector( '.sasha-chat-messages' );
+            this.$quickRep = this.#root.querySelector( '.sasha-chat-quick-replies' );
             this.$input    = this.#root.querySelector( '.sasha-chat-input' );
             this.$send     = this.#root.querySelector( '.sasha-chat-send' );
+
+            this.#renderQuickReplies();
         }
 
         /* ---------------------------------------------------------------
@@ -88,6 +104,11 @@
 
         #bindEvents() {
             this.$toggle.addEventListener( 'click', () => this.#toggleWindow() );
+            this.$close.addEventListener( 'click', () => {
+                if (this.$toggle.getAttribute('aria-expanded') === 'true') {
+                    this.#toggleWindow();
+                }
+            });
 
             this.$send.addEventListener( 'click', () => this.#handleSubmit() );
 
@@ -97,6 +118,36 @@
                     this.#handleSubmit();
                 }
             } );
+
+            this.$quickRep.addEventListener( 'click', ( e ) => {
+                if ( e.target.classList.contains('sasha-chat-quick-reply') ) {
+                    const text = e.target.textContent;
+                    this.#handleQuickReply(text);
+                }
+            });
+        }
+
+        /* ---------------------------------------------------------------
+         * Quick Replies
+         * --------------------------------------------------------------- */
+
+        #renderQuickReplies() {
+            const replies = [
+                "What services do you offer?",
+                "How do I schedule a consultation?",
+                "Tell me about retirement planning"
+            ];
+            
+            this.$quickRep.innerHTML = replies.map(r => 
+                `<button class="sasha-chat-quick-reply">${r}</button>`
+            ).join('');
+        }
+
+        #handleQuickReply(text) {
+            this.$quickRep.remove(); // Remove quick replies after selecting one
+            
+            this.$input.value = text;
+            this.#handleSubmit();
         }
 
         /* ---------------------------------------------------------------

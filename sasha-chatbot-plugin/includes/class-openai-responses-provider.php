@@ -15,7 +15,7 @@ if ( ! defined( 'ABSPATH' ) ) {
 
 class OpenAI_Responses_Provider implements Chat_Provider_Interface {
 
-    private const API_URL = 'https://api.openai.com/v1/responses';
+    private const API_URL = 'https://api.openai.com/v1/chat/completions';
 
     /**
      * Send a user message to the OpenAI Responses API.
@@ -33,14 +33,20 @@ class OpenAI_Responses_Provider implements Chat_Provider_Interface {
             return $this->error_result( 'provider_config_error', $trace_id );
         }
 
-        $model          = get_option( 'sasha_chatbot_model', 'gpt-4.1' );
+        $model          = get_option( 'sasha_chatbot_model', 'gpt-4o' );
         $system_prompt  = get_option( 'sasha_chatbot_system_prompt', 'You are a professional coaching assistant. Guide the user towards the most appropriate coaching module based on their needs.' );
         $timeout        = (int) get_option( 'sasha_chatbot_timeout', 30 );
 
+        if ( $model === 'gpt-4.1' ) {
+            $model = 'gpt-4o';
+        }
+
         $body = array(
-            'model'        => $model,
-            'instructions' => $system_prompt,
-            'input'        => $message,
+            'model'    => $model,
+            'messages' => array(
+                array( 'role' => 'system', 'content' => $system_prompt ),
+                array( 'role' => 'user', 'content' => $message )
+            ),
         );
 
         $response = wp_remote_post( self::API_URL, array(
@@ -84,8 +90,8 @@ class OpenAI_Responses_Provider implements Chat_Provider_Interface {
             return $this->error_result( 'provider_parse_error', $trace_id );
         }
 
-        // --- Extract reply text from the Responses API output shape ---
-        $reply_text = $data['output'][0]['content'][0]['text'] ?? '';
+        // --- Extract reply text from the Chat Completions API output shape ---
+        $reply_text = $data['choices'][0]['message']['content'] ?? '';
 
         if ( empty( $reply_text ) ) {
             error_log( "[sasha-chatbot][{$trace_id}] Empty reply_text in OpenAI response." );

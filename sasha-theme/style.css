@@ -1,0 +1,55 @@
+/*
+Theme Name: Sasha Coaching Theme
+Author: Sasha
+Description: Custom theme for local sandbox using Lovable UI
+Version: 1.0
+*/
+
+@import url('https://fonts.googleapis.com/css2?family=Playfair+Display:wght@400;500;600;700&family=DM+Sans:wght@300;400;500;600;700&display=swap');
+
+:root {
+  --background: 40 33% 98%;
+  --foreground: 220 30% 12%;
+
+  --card: 0 0% 100%;
+  --card-foreground: 220 30% 12%;
+
+  --popover: 0 0% 100%;
+  --popover-foreground: 220 30% 12%;
+
+  --primary: 210 55% 22%;
+  --primary-foreground: 40 33% 98%;
+
+  --secondary: 40 30% 93%;
+  --secondary-foreground: 210 55% 22%;
+
+  --muted: 40 20% 95%;
+  --muted-foreground: 220 10% 46%;
+
+  --accent: 38 80% 55%;
+  --accent-foreground: 220 30% 12%;
+
+  --destructive: 0 84.2% 60.2%;
+  --destructive-foreground: 210 40% 98%;
+
+  --border: 40 20% 88%;
+  --input: 40 20% 88%;
+  --ring: 210 55% 22%;
+
+  --radius: 0.5rem;
+}
+
+body {
+  font-family: 'DM Sans', sans-serif;
+  background-color: hsl(var(--background));
+  color: hsl(var(--foreground));
+  margin: 0;
+}
+
+h1, h2, h3, h4, h5, h6, .font-display {
+  font-family: 'Playfair Display', serif;
+}
+
+body.admin-bar header.sticky {
+    top: 32px;
+}
