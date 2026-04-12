@@ -39,6 +39,7 @@ services:
     volumes:
       # Mount the plugin source directly into wp-content/plugins for live editing.
       - ./sasha-chatbot-plugin:/var/www/html/wp-content/plugins/sasha-chatbot
+      - ./coachproof-ai-plugin:/var/www/html/wp-content/plugins/coachproof-ai
       - ./sasha-theme:/var/www/html/wp-content/themes/sasha-theme
       # Persist the full WordPress install so themes/settings survive restarts.
       - wp_data:/var/www/html
@@ -65,6 +66,7 @@ services:
       SASHA_OPENAI_API_KEY: "${SASHA_OPENAI_API_KEY:-}"
     volumes:
       - ./sasha-chatbot-plugin:/var/www/html/wp-content/plugins/sasha-chatbot
+      - ./coachproof-ai-plugin:/var/www/html/wp-content/plugins/coachproof-ai
       - ./sasha-theme:/var/www/html/wp-content/themes/sasha-theme
       - wp_data:/var/www/html
       - ./docker/seed.sh:/seed.sh:ro

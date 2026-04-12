@@ -48,6 +48,9 @@ wp rewrite structure '/%postname%/' --hard
 echo "[seed] Activating sasha-chatbot plugin..."
 wp plugin activate sasha-chatbot 2>/dev/null || echo "[seed]   Plugin not found or already active — will retry on next boot."
 
+echo "[seed] Activating coachproof-ai plugin..."
+wp plugin activate coachproof-ai 2>/dev/null || echo "[seed]   Experimental plugin not found or already active."
+
 # ------------------------------------------------------------------
 # Activate the custom theme
 # ------------------------------------------------------------------
@@ -67,6 +70,18 @@ if ! wp post list --post_type=page --name=chatbot-test --field=ID 2>/dev/null | 
     --post_content='<!-- Sasha Chatbot mount point -->[sasha_chatbot]'
 else
   echo "[seed] Test page 'chatbot-test' already exists — skipping."
+fi
+
+if ! wp post list --post_type=page --name=coachproof-test --field=ID 2>/dev/null | grep -q .; then
+  echo "[seed] Creating test page with [coachproof_chatbot] shortcode..."
+  wp post create \
+    --post_type=page \
+    --post_title="CoachProof Test" \
+    --post_name="coachproof-test" \
+    --post_status=publish \
+    --post_content='<!-- CoachProof Chatbot mount point -->[coachproof_chatbot]'
+else
+  echo "[seed] Test page 'coachproof-test' already exists — skipping."
 fi
 
 PAGE_ID=$(wp post list --post_type=page --name=chatbot-test --field=ID)
