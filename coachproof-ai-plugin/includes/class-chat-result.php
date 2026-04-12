@@ -2,7 +2,7 @@
 /**
  * Chat Result Value Object
  *
- * Normalised response returned by any Chat_Provider_Interface implementation.
+ * Normalised response returned by any Coachproof_Chat_Provider_Interface implementation.
  * The REST layer and frontend consume this shape exclusively.
  *
  * @package CoachProofAI
@@ -12,7 +12,7 @@ if ( ! defined( 'ABSPATH' ) ) {
     exit;
 }
 
-class Chat_Result {
+class Coachproof_Chat_Result {
 
     /** @var string The AI-generated reply text. */
     public string $reply_text;

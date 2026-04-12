@@ -141,6 +141,79 @@ class Coachproof_Settings {
             );
             echo '<p class="description">Maximum number of chat requests per minute from a single IP address.</p>';
         }, self::PAGE_SLUG, 'coachproof_provider_section' );
+
+        // --- Section: Knowledge Base ---
+        add_settings_section(
+            'coachproof_kb_section',
+            'Knowledge Base',
+            function () {
+                echo '<p>Configure the OpenAI Vector Store used for document-backed answers.</p>';
+            },
+            self::PAGE_SLUG
+        );
+
+        // Vector Store ID (read-only display + provisioning button).
+        register_setting( self::OPTION_GROUP, 'coachproof_vector_store_id', array(
+            'type'              => 'string',
+            'sanitize_callback' => 'sanitize_text_field',
+            'default'           => '',
+        ) );
+        add_settings_field( 'coachproof_vector_store_id', 'Vector Store', function () {
+            $vs_id = get_option( 'coachproof_vector_store_id', '' );
+            if ( $vs_id ) {
+                printf(
+                    '<code id="coachproof-vs-id-display">%s</code>',
+                    esc_html( $vs_id )
+                );
+                echo '<input type="hidden" name="coachproof_vector_store_id" value="' . esc_attr( $vs_id ) . '" />';
+                echo '<p class="description">Your knowledge documents will be synced to this Vector Store.</p>';
+                echo '<p><button type="button" class="button button-link-delete" id="coachproof-delete-vs-btn">Delete &amp; Recreate</button></p>';
+            } else {
+                echo '<div id="coachproof-vs-create-area">';
+                echo '<button type="button" class="button button-primary" id="coachproof-create-vs-btn">Create Vector Store</button>';
+                echo '<span id="coachproof-vs-spinner" class="spinner" style="float:none;"></span>';
+                echo '<p class="description">Creates a new Vector Store in your OpenAI account. Requires a valid API key.</p>';
+                echo '</div>';
+                echo '<div id="coachproof-vs-created" style="display:none;">';
+                echo '<code id="coachproof-vs-id-display"></code>';
+                echo '<p class="description" style="color:#16a34a;">✅ Vector Store created successfully!</p>';
+                echo '</div>';
+            }
+            echo '<p id="coachproof-vs-error" style="color:#b91c1c;display:none;"></p>';
+        }, self::PAGE_SLUG, 'coachproof_kb_section' );
+
+        // Assistant ID (read-only display + provisioning button).
+        register_setting( self::OPTION_GROUP, 'coachproof_assistant_id', array(
+            'type'              => 'string',
+            'sanitize_callback' => 'sanitize_text_field',
+            'default'           => '',
+        ) );
+        add_settings_field( 'coachproof_assistant_id', 'AI Assistant', function () {
+            $asst_id = get_option( 'coachproof_assistant_id', '' );
+            if ( $asst_id ) {
+                printf( '<code id="coachproof-asst-id-display">%s</code>', esc_html( $asst_id ) );
+                echo '<input type="hidden" name="coachproof_assistant_id" value="' . esc_attr( $asst_id ) . '" />';
+                echo '<p class="description">Answers will be grounded using this assistant\'s file_search tool.</p>';
+                echo '<p><button type="button" class="button" id="coachproof-update-asst-btn">Update Assistant (re-sync settings)</button>';
+                echo '  <span id="coachproof-asst-update-feedback" style="margin-left:8px;"></span></p>';
+            } else {
+                $vs_id = get_option( 'coachproof_vector_store_id', '' );
+                echo '<div id="coachproof-asst-create-area">';
+                if ( $vs_id ) {
+                    echo '<button type="button" class="button button-primary" id="coachproof-create-asst-btn">Create Assistant</button>';
+                    echo '<span id="coachproof-asst-spinner" class="spinner" style="float:none;"></span>';
+                    echo '<p class="description">Creates an AI assistant linked to your Vector Store for grounded answering.</p>';
+                } else {
+                    echo '<p class="description" style="color:#854d0e;">⚠ Create a Vector Store first (above), then create the Assistant.</p>';
+                }
+                echo '</div>';
+                echo '<div id="coachproof-asst-created" style="display:none;">';
+                echo '<code id="coachproof-asst-id-display"></code>';
+                echo '<p class="description" style="color:#16a34a;">✅ Assistant created successfully!</p>';
+                echo '</div>';
+            }
+            echo '<p id="coachproof-asst-error" style="color:#b91c1c;display:none;"></p>';
+        }, self::PAGE_SLUG, 'coachproof_kb_section' );
     }
 
     /**
@@ -161,6 +234,112 @@ class Coachproof_Settings {
                 ?>
             </form>
         </div>
+
+        <script>
+        jQuery(function($) {
+            var assistantNonce = '<?php echo esc_js( wp_create_nonce( 'coachproof_manage_assistant' ) ); ?>';
+
+            // --- Create Vector Store ---
+            $('#coachproof-create-vs-btn').on('click', function(e) {
+                e.preventDefault();
+                var $btn     = $(this);
+                var $spinner = $('#coachproof-vs-spinner');
+                var $error   = $('#coachproof-vs-error');
+
+                $btn.prop('disabled', true);
+                $spinner.addClass('is-active');
+                $error.hide();
+
+                $.post(ajaxurl, {
+                    action: 'coachproof_create_vector_store',
+                    _ajax_nonce: '<?php echo esc_js( wp_create_nonce( 'coachproof_create_vs' ) ); ?>'
+                }, function(response) {
+                    $spinner.removeClass('is-active');
+                    if (response.success) {
+                        $('#coachproof-vs-create-area').hide();
+                        $('#coachproof-vs-id-display').text(response.data.vector_store_id);
+                        $('#coachproof-vs-created').show();
+                    } else {
+                        $error.text('❌ ' + (response.data.error || 'Failed to create Vector Store.')).show();
+                        $btn.prop('disabled', false);
+                    }
+                }).fail(function() {
+                    $spinner.removeClass('is-active');
+                    $error.text('❌ Network error.').show();
+                    $btn.prop('disabled', false);
+                });
+            });
+
+            // --- Delete & Recreate VS ---
+            $('#coachproof-delete-vs-btn').on('click', function(e) {
+                e.preventDefault();
+                if (!confirm('This will delete the current Vector Store reference. Documents will need to be re-synced. Continue?')) return;
+                $('input[name="coachproof_vector_store_id"]').val('');
+                $('form').submit();
+            });
+
+            // --- Create Assistant ---
+            $('#coachproof-create-asst-btn').on('click', function(e) {
+                e.preventDefault();
+                var $btn     = $(this);
+                var $spinner = $('#coachproof-asst-spinner');
+                var $error   = $('#coachproof-asst-error');
+
+                $btn.prop('disabled', true);
+                $spinner.addClass('is-active');
+                $error.hide();
+
+                $.post(ajaxurl, {
+                    action: 'coachproof_create_assistant',
+                    _ajax_nonce: assistantNonce
+                }, function(response) {
+                    $spinner.removeClass('is-active');
+                    if (response.success) {
+                        $('#coachproof-asst-create-area').hide();
+                        $('#coachproof-asst-id-display').text(response.data.assistant_id);
+                        $('#coachproof-asst-created').show();
+                    } else {
+                        $error.text('❌ ' + (response.data.error || 'Failed to create assistant.')).show();
+                        $btn.prop('disabled', false);
+                    }
+                }).fail(function() {
+                    $spinner.removeClass('is-active');
+                    $error.text('❌ Network error.').show();
+                    $btn.prop('disabled', false);
+                });
+            });
+
+            // --- Update Assistant ---
+            $('#coachproof-update-asst-btn').on('click', function(e) {
+                e.preventDefault();
+                var $btn      = $(this);
+                var $feedback = $('#coachproof-asst-update-feedback');
+                var $error    = $('#coachproof-asst-error');
+
+                $btn.prop('disabled', true);
+                $feedback.text('Updating…').css('color','#6b7280');
+                $error.hide();
+
+                $.post(ajaxurl, {
+                    action: 'coachproof_update_assistant',
+                    _ajax_nonce: assistantNonce
+                }, function(response) {
+                    if (response.success) {
+                        $feedback.text('✅ Updated').css('color','#16a34a');
+                    } else {
+                        $error.text('❌ ' + (response.data.error || 'Update failed.')).show();
+                        $feedback.text('');
+                    }
+                    $btn.prop('disabled', false);
+                }).fail(function() {
+                    $error.text('❌ Network error.').show();
+                    $feedback.text('');
+                    $btn.prop('disabled', false);
+                });
+            });
+        });
+        </script>
         <?php
     }
 }
+

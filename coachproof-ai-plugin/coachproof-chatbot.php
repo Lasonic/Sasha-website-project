@@ -25,9 +25,16 @@ define( 'COACHPROOF_AI_URL', plugin_dir_url( __FILE__ ) );
 // ------------------------------------------------------------------
 require_once COACHPROOF_AI_DIR . 'includes/interface-chat-provider.php';
 require_once COACHPROOF_AI_DIR . 'includes/class-chat-result.php';
+require_once COACHPROOF_AI_DIR . 'includes/class-lead-profile.php';
 require_once COACHPROOF_AI_DIR . 'includes/class-openai-responses-provider.php';
+require_once COACHPROOF_AI_DIR . 'includes/class-openai-assistant-provider.php';
+require_once COACHPROOF_AI_DIR . 'includes/class-gated-response-builder.php';
 require_once COACHPROOF_AI_DIR . 'includes/class-coachproof-settings.php';
 require_once COACHPROOF_AI_DIR . 'includes/class-coachproof-rest-api.php';
+require_once COACHPROOF_AI_DIR . 'includes/Admin/class-knowledge-post-type.php';
+require_once COACHPROOF_AI_DIR . 'includes/Admin/class-knowledge-meta-box.php';
+require_once COACHPROOF_AI_DIR . 'includes/Services/class-openai-file-sync.php';
+require_once COACHPROOF_AI_DIR . 'includes/Services/class-openai-assistant-manager.php';
 
 // ------------------------------------------------------------------
 // Shortcode: [coachproof_chatbot]
@@ -75,7 +82,23 @@ add_action( 'wp_enqueue_scripts', function () {
 // ------------------------------------------------------------------
 if ( is_admin() ) {
     Coachproof_Settings::init();
+    Coachproof_Knowledge_Meta_Box::init();
 }
+
+// ------------------------------------------------------------------
+// Initialise Knowledge Documents CPT (must run on both admin and front).
+// ------------------------------------------------------------------
+Coachproof_Knowledge_Post_Type::init();
+
+// ------------------------------------------------------------------
+// Initialise OpenAI File Sync service (AJAX handlers + delete hooks).
+// ------------------------------------------------------------------
+Coachproof_OpenAI_File_Sync::init();
+
+// ------------------------------------------------------------------
+// Initialise OpenAI Assistant Manager (AJAX handlers).
+// ------------------------------------------------------------------
+Coachproof_OpenAI_Assistant_Manager::init();
 
 // ------------------------------------------------------------------
 // Initialise REST API routes.

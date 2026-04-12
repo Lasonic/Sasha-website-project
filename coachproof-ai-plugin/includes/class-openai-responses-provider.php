@@ -2,7 +2,7 @@
 /**
  * OpenAI Responses API Provider
  *
- * Implements Chat_Provider_Interface using the OpenAI Responses API
+ * Implements Coachproof_Chat_Provider_Interface using the OpenAI Responses API
  * (POST /v1/responses). This is a stateless, single-turn request/response
  * pattern — no Threads, no Runs, no polling.
  *
@@ -13,7 +13,7 @@ if ( ! defined( 'ABSPATH' ) ) {
     exit;
 }
 
-class OpenAI_Responses_Provider implements Chat_Provider_Interface {
+class Coachproof_OpenAI_Responses_Provider implements Coachproof_Chat_Provider_Interface {
 
     private const API_URL = 'https://api.openai.com/v1/chat/completions';
 
@@ -22,9 +22,9 @@ class OpenAI_Responses_Provider implements Chat_Provider_Interface {
      *
      * @param string $message  Sanitised user message.
      * @param array  $context  Optional: conversation_id, page_context.
-     * @return Chat_Result
+     * @return Coachproof_Chat_Result
      */
-    public function send_message( string $message, array $context = array() ): Chat_Result {
+    public function send_message( string $message, array $context = array() ): Coachproof_Chat_Result {
         $trace_id = wp_generate_uuid4();
         $api_key  = $this->get_api_key();
 
@@ -100,7 +100,7 @@ class OpenAI_Responses_Provider implements Chat_Provider_Interface {
 
         $conversation_id = $context['conversation_id'] ?? ( $data['id'] ?? '' );
 
-        return new Chat_Result(
+        return new Coachproof_Chat_Result(
             reply_text:      $reply_text,
             ui_state:        'answer',
             delivery_mode:   'single',
@@ -125,14 +125,14 @@ class OpenAI_Responses_Provider implements Chat_Provider_Interface {
     }
 
     /**
-     * Build a safe error Chat_Result. Never leaks raw provider details.
+     * Build a safe error Coachproof_Chat_Result. Never leaks raw provider details.
      *
      * @param string $error_code
      * @param string $trace_id
-     * @return Chat_Result
+     * @return Coachproof_Chat_Result
      */
-    private function error_result( string $error_code, string $trace_id ): Chat_Result {
-        return new Chat_Result(
+    private function error_result( string $error_code, string $trace_id ): Coachproof_Chat_Result {
+        return new Coachproof_Chat_Result(
             reply_text:      'Sorry, I wasn\'t able to process your request right now. Please try again shortly.',
             ui_state:        'error',
             delivery_mode:   'single',

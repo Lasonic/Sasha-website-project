@@ -320,6 +320,160 @@
 }
 
 /* ------------------------------------------------------------------
+ * Intake Step Panels
+ * ------------------------------------------------------------------ */
+
+/* All panels hidden by default */
+.coachproof-intake-panel {
+    display: none;
+    flex-direction: column;
+    gap: 0.5rem;
+    padding: 0.75rem 1rem;
+    border-top: 1px solid var(--coachproof-chat-border);
+    flex-shrink: 0;
+    animation: coachproof-fade-in 0.25s ease;
+}
+
+/* Only the active panel is shown */
+.coachproof-intake-panel--active {
+    display: flex;
+}
+
+/* FAQ mode panel overrides — no top border, just the input row */
+#coachproof-step-faq_mode {
+    padding: 0;
+    border-top: none;
+}
+
+/* Label above each intake field */
+.coachproof-intake-label {
+    margin: 0 0 0.15rem 0;
+    font-size: 0.78rem;
+    font-weight: 600;
+    color: var(--coachproof-chat-primary);
+    letter-spacing: 0.02em;
+    text-transform: uppercase;
+}
+
+/* Text / number inputs inside the intake panels */
+.coachproof-intake-input {
+    width: 100%;
+    padding: 0.5rem 0.75rem;
+    border: 1px solid var(--coachproof-chat-border);
+    border-radius: 0.5rem;
+    font-family: var(--coachproof-chat-font);
+    font-size: var(--coachproof-chat-font-size);
+    background: var(--coachproof-chat-input-bg);
+    color: var(--coachproof-chat-text);
+    outline: none;
+    transition: border-color 0.2s;
+    box-sizing: border-box;
+}
+
+.coachproof-intake-input:focus {
+    border-color: var(--coachproof-chat-primary);
+}
+
+.coachproof-intake-input::placeholder {
+    color: #a1a1aa;
+}
+
+/* Next / continue button on each step */
+.coachproof-intake-next {
+    align-self: flex-end;
+    padding: 0.45rem 1.25rem;
+    border: none;
+    border-radius: 9999px;
+    background: var(--coachproof-chat-primary);
+    color: var(--coachproof-chat-primary-foreground);
+    font-family: var(--coachproof-chat-font);
+    font-size: 0.875rem;
+    font-weight: 600;
+    cursor: pointer;
+    transition: opacity 0.2s;
+}
+
+.coachproof-intake-next:hover {
+    opacity: 0.88;
+}
+
+/* Inline validation error text */
+.coachproof-intake-error {
+    margin: 0;
+    font-size: 0.78rem;
+    color: var(--coachproof-chat-error-bg);
+    min-height: 1em;
+}
+
+/* ------------------------------------------------------------------
+ * Objective selection buttons (Step 3)
+ * ------------------------------------------------------------------ */
+
+.coachproof-objective-list {
+    display: flex;
+    flex-direction: column;
+    gap: 0.5rem;
+}
+
+.coachproof-objective-btn {
+    width: 100%;
+    padding: 0.6rem 1rem;
+    border: 1.5px solid rgba(25, 56, 89, 0.25);
+    border-radius: 0.625rem;
+    background: rgba(25, 56, 89, 0.04);
+    color: var(--coachproof-chat-primary);
+    font-family: var(--coachproof-chat-font);
+    font-size: 0.8375rem;
+    font-weight: 500;
+    text-align: left;
+    cursor: pointer;
+    transition: background 0.2s, border-color 0.2s, transform 0.15s;
+}
+
+.coachproof-objective-btn:hover {
+    background: rgba(25, 56, 89, 0.1);
+    border-color: var(--coachproof-chat-primary);
+    transform: translateX(2px);
+}
+
+.coachproof-objective-btn--selected {
+    background: var(--coachproof-chat-primary);
+    color: var(--coachproof-chat-primary-foreground);
+    border-color: var(--coachproof-chat-primary);
+}
+
+/* ------------------------------------------------------------------
+ * Source citations
+ * ------------------------------------------------------------------ */
+
+.coachproof-chat-sources {
+    padding: 0.25rem 0.75rem;
+    font-size: 0.72rem;
+    color: #6b7280;
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 0.3rem;
+    animation: coachproof-fade-in 0.3s ease;
+}
+
+.coachproof-sources-label {
+    font-weight: 600;
+    color: #374151;
+}
+
+.coachproof-source-tag {
+    display: inline-block;
+    padding: 1px 8px;
+    border-radius: 9999px;
+    background: rgba(25, 56, 89, 0.08);
+    color: var(--coachproof-chat-primary);
+    font-size: 0.68rem;
+    font-weight: 500;
+    border: 1px solid rgba(25, 56, 89, 0.15);
+}
+
+/* ------------------------------------------------------------------
  * Responsive adjustments
  * ------------------------------------------------------------------ */
 @media (max-width: 480px) {

@@ -1,12 +1,19 @@
 /**
  * CoachProof AI – Frontend Widget
  *
- * Vanilla ES6 class managing the chatbot DOM, state machine, and REST
- * communication. Communicates only through the documented REST contract
- * and stable DOM hooks.
+ * Vanilla ES6 class managing a 4-step gated intake flow before entering
+ * free-chat (FAQ) mode.
  *
- * UI States: idle | loading | streaming | answer | auth-required | error | escalation
- * Client Events: sasha:submit | sasha:success | sasha:error | sasha:escalation
+ * Intake steps (enforced client-side AND server-side):
+ *   1. collect_name_age    → name (text) + age (number)
+ *   2. collect_occupation  → occupation (text)
+ *   3. collect_objective   → one of three controlled buttons
+ *   4. faq_mode            → normal chat input unlocked
+ *
+ * Local persistence: localStorage key `coachproof_session`
+ * Shape: { conversation_id, current_step, lead_profile: { name, age, occupation, objective } }
+ *
+ * UI States: intake | loading | answer | error | escalation
  *
  * @package CoachProofAI
  */
@@ -14,277 +21,463 @@
 ( function () {
     'use strict';
 
-    class CoachProofAI {
+    // ---------------------------------------------------------------
+    // Constants
+    // ---------------------------------------------------------------
+    const STORAGE_KEY = 'coachproof_session';
 
-        /** @type {string} Current UI state. */
-        #state = 'idle';
+    const STEPS = [
+        'collect_name_age',
+        'collect_occupation',
+        'collect_objective',
+        'faq_mode',
+    ];
 
-        /** @type {string|null} Active conversation ID for multi-turn. */
+    const OBJECTIVES = [
+        { value: 'retirement_planning_superannuation_advice', label: 'Retirement Planning & Superannuation Advice' },
+        { value: 'investment_management_strategy',            label: 'Investment Management & Strategy' },
+        { value: 'risk_management_insurance_advice',          label: 'Risk Management & Insurance Advice' },
+    ];
+
+    // ---------------------------------------------------------------
+    // CoachProofWidget
+    // ---------------------------------------------------------------
+    class CoachProofWidget {
+
+        /** @type {string} One of STEPS. */
+        #step = 'collect_name_age';
+
+        /** @type {string|null} */
         #conversationId = null;
 
-        /** @type {HTMLElement} Root container rendered by the shortcode. */
+        /** @type {{ name: string, age: number|null, occupation: string, objective: string }} */
+        #leadProfile = { name: '', age: null, occupation: '', objective: '' };
+
+        /** @type {HTMLElement} */
         #root;
 
-        /** @type {string} REST endpoint URL (from data-rest-url). */
+        /** @type {string} */
         #restUrl;
 
-        /** @type {string} WP REST nonce (from data-nonce). */
+        /** @type {string} */
         #nonce;
 
+        /** @type {boolean} */
+        #isLoading = false;
+
         /**
-         * Initialise the chatbot on the mount-point container.
-         *
-         * @param {HTMLElement} rootEl – The [coachproof_chatbot] shortcode container.
+         * @param {HTMLElement} rootEl
          */
         constructor( rootEl ) {
             this.#root    = rootEl;
             this.#restUrl = rootEl.dataset.restUrl;
             this.#nonce   = rootEl.dataset.nonce;
 
+            this.#restoreSession();
             this.#buildDOM();
             this.#bindEvents();
-            this.#setState( 'idle' );
+            this.#renderStep();
         }
 
-        /* ---------------------------------------------------------------
-         * DOM Construction
-         * --------------------------------------------------------------- */
+        // ---------------------------------------------------------------
+        // Session persistence
+        // ---------------------------------------------------------------
+
+        #restoreSession() {
+            try {
+                const saved = localStorage.getItem( STORAGE_KEY );
+                if ( ! saved ) return;
+                const session = JSON.parse( saved );
+                if ( STEPS.includes( session.current_step ) ) {
+                    this.#step           = session.current_step;
+                    this.#conversationId = session.conversation_id || null;
+                    this.#leadProfile    = Object.assign( { name: '', age: null, occupation: '', objective: '' }, session.lead_profile || {} );
+                }
+            } catch ( _e ) {
+                // Corrupt storage — start fresh.
+                localStorage.removeItem( STORAGE_KEY );
+            }
+        }
+
+        #saveSession() {
+            try {
+                localStorage.setItem( STORAGE_KEY, JSON.stringify( {
+                    conversation_id: this.#conversationId,
+                    current_step:    this.#step,
+                    lead_profile:    this.#leadProfile,
+                } ) );
+            } catch ( _e ) { /* storage full — non-fatal */ }
+        }
+
+        #clearSession() {
+            localStorage.removeItem( STORAGE_KEY );
+            this.#step           = 'collect_name_age';
+            this.#conversationId = null;
+            this.#leadProfile    = { name: '', age: null, occupation: '', objective: '' };
+        }
+
+        // ---------------------------------------------------------------
+        // DOM Construction
+        // ---------------------------------------------------------------
 
         #buildDOM() {
-            // Toggle button
             this.#root.insertAdjacentHTML( 'beforeend', `
                 <button class="coachproof-chat-toggle" aria-expanded="false" aria-label="Open chat">
-                    <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="lucide lucide-message-circle"><path d="M7.9 20A9 9 0 1 0 4 16.1L2 22Z"/></svg>
+                    <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M7.9 20A9 9 0 1 0 4 16.1L2 22Z"/></svg>
                 </button>
-            ` );
 
-            // Chat window
-            this.#root.insertAdjacentHTML( 'beforeend', `
-                <div class="coachproof-chat-window" role="log" aria-live="polite">
+                <div class="coachproof-chat-window" role="dialog" aria-label="CoachProof chat" aria-modal="true">
                     <div class="coachproof-chat-header">
                         <div class="coachproof-chat-header-info">
                             <p class="title">Financial Advisor</p>
                             <p class="subtitle">We typically reply instantly</p>
                         </div>
                         <button class="coachproof-chat-close" aria-label="Close chat">
-                            <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="lucide lucide-x"><path d="M18 6 6 18"/><path d="m6 6 12 12"/></svg>
+                            <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M18 6 6 18"/><path d="m6 6 12 12"/></svg>
                         </button>
                     </div>
-                    <div class="coachproof-chat-messages"></div>
-                    <div class="coachproof-chat-quick-replies"></div>
-                    <div class="coachproof-chat-input-area">
-                        <div class="coachproof-chat-input-wrapper">
-                            <input type="text"
-                                   class="coachproof-chat-input"
-                                   placeholder="Type your question..."
-                                   aria-label="Chat message" />
+
+                    <div class="coachproof-chat-messages" role="log" aria-live="polite"></div>
+
+                    <!-- Intake step panels — shown one at a time -->
+                    <div class="coachproof-intake-panel" id="coachproof-step-collect_name_age">
+                        <p class="coachproof-intake-label">Your name</p>
+                        <input id="coachproof-input-name" type="text" class="coachproof-intake-input" placeholder="First name" autocomplete="given-name" maxlength="80" />
+                        <p class="coachproof-intake-label">Your age</p>
+                        <input id="coachproof-input-age" type="number" class="coachproof-intake-input" placeholder="e.g. 35" min="1" max="120" />
+                        <button class="coachproof-intake-next" id="coachproof-btn-name-age">Next →</button>
+                        <p class="coachproof-intake-error" id="coachproof-err-name-age" aria-live="polite"></p>
+                    </div>
+
+                    <div class="coachproof-intake-panel" id="coachproof-step-collect_occupation">
+                        <p class="coachproof-intake-label">Your occupation</p>
+                        <input id="coachproof-input-occupation" type="text" class="coachproof-intake-input" placeholder="e.g. Engineer, Teacher, Business Owner" maxlength="100" />
+                        <button class="coachproof-intake-next" id="coachproof-btn-occupation">Next →</button>
+                        <p class="coachproof-intake-error" id="coachproof-err-occupation" aria-live="polite"></p>
+                    </div>
+
+                    <div class="coachproof-intake-panel" id="coachproof-step-collect_objective">
+                        <p class="coachproof-intake-label">What are you looking for?</p>
+                        <div class="coachproof-objective-list">
+                            ${OBJECTIVES.map( o => `<button class="coachproof-objective-btn" data-value="${o.value}">${o.label}</button>` ).join( '' )}
                         </div>
-                        <button class="coachproof-chat-send" aria-label="Send message">
-                            <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="lucide lucide-send"><path d="m22 2-7 20-4-9-9-4Z"/><path d="M22 2 11 13"/></svg>
-                        </button>
+                        <p class="coachproof-intake-error" id="coachproof-err-objective" aria-live="polite"></p>
+                    </div>
+
+                    <!-- FAQ (free-chat) area — shown only after intake complete -->
+                    <div class="coachproof-intake-panel" id="coachproof-step-faq_mode">
+                        <div class="coachproof-chat-input-area">
+                            <div class="coachproof-chat-input-wrapper">
+                                <input type="text"
+                                       class="coachproof-chat-input"
+                                       placeholder="Type your question..."
+                                       aria-label="Chat message" />
+                            </div>
+                            <button class="coachproof-chat-send" aria-label="Send message">
+                                <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m22 2-7 20-4-9-9-4Z"/><path d="M22 2 11 13"/></svg>
+                            </button>
+                        </div>
                     </div>
                 </div>
             ` );
 
-            // Cache references
-            this.$toggle   = this.#root.querySelector( '.coachproof-chat-toggle' );
-            this.$window   = this.#root.querySelector( '.coachproof-chat-window' );
-            this.$close    = this.#root.querySelector( '.coachproof-chat-close' );
-            this.$messages = this.#root.querySelector( '.coachproof-chat-messages' );
-            this.$quickRep = this.#root.querySelector( '.coachproof-chat-quick-replies' );
-            this.$input    = this.#root.querySelector( '.coachproof-chat-input' );
-            this.$send     = this.#root.querySelector( '.coachproof-chat-send' );
-
-            this.#renderQuickReplies();
+            // Cache references.
+            this.$toggle     = this.#root.querySelector( '.coachproof-chat-toggle' );
+            this.$window     = this.#root.querySelector( '.coachproof-chat-window' );
+            this.$close      = this.#root.querySelector( '.coachproof-chat-close' );
+            this.$messages   = this.#root.querySelector( '.coachproof-chat-messages' );
+            this.$inputName  = this.#root.querySelector( '#coachproof-input-name' );
+            this.$inputAge   = this.#root.querySelector( '#coachproof-input-age' );
+            this.$btnNameAge = this.#root.querySelector( '#coachproof-btn-name-age' );
+            this.$errNameAge = this.#root.querySelector( '#coachproof-err-name-age' );
+            this.$inputOcc   = this.#root.querySelector( '#coachproof-input-occupation' );
+            this.$btnOcc     = this.#root.querySelector( '#coachproof-btn-occupation' );
+            this.$errOcc     = this.#root.querySelector( '#coachproof-err-occupation' );
+            this.$errObj     = this.#root.querySelector( '#coachproof-err-objective' );
+            this.$chatInput  = this.#root.querySelector( '.coachproof-chat-input' );
+            this.$chatSend   = this.#root.querySelector( '.coachproof-chat-send' );
         }
 
-        /* ---------------------------------------------------------------
-         * Event Binding
-         * --------------------------------------------------------------- */
+        // ---------------------------------------------------------------
+        // Event Binding
+        // ---------------------------------------------------------------
 
         #bindEvents() {
             this.$toggle.addEventListener( 'click', () => this.#toggleWindow() );
             this.$close.addEventListener( 'click', () => {
-                if (this.$toggle.getAttribute('aria-expanded') === 'true') {
+                if ( this.$toggle.getAttribute( 'aria-expanded' ) === 'true' ) {
                     this.#toggleWindow();
-                }
-            });
-
-            this.$send.addEventListener( 'click', () => this.#handleSubmit() );
-
-            this.$input.addEventListener( 'keydown', ( e ) => {
-                if ( e.key === 'Enter' && !e.shiftKey ) {
-                    e.preventDefault();
-                    this.#handleSubmit();
                 }
             } );
 
-            this.$quickRep.addEventListener( 'click', ( e ) => {
-                if ( e.target.classList.contains('coachproof-chat-quick-reply') ) {
-                    const text = e.target.textContent;
-                    this.#handleQuickReply(text);
+            // Step 1: name + age
+            this.$btnNameAge.addEventListener( 'click', () => this.#submitNameAge() );
+            this.$inputAge.addEventListener( 'keydown', e => { if ( e.key === 'Enter' ) this.#submitNameAge(); } );
+
+            // Step 2: occupation
+            this.$btnOcc.addEventListener( 'click', () => this.#submitOccupation() );
+            this.$inputOcc.addEventListener( 'keydown', e => { if ( e.key === 'Enter' ) this.#submitOccupation(); } );
+
+            // Step 3: objective (delegated to parent div)
+            this.#root.querySelector( '.coachproof-objective-list' ).addEventListener( 'click', e => {
+                const btn = e.target.closest( '.coachproof-objective-btn' );
+                if ( btn ) this.#submitObjective( btn.dataset.value );
+            } );
+
+            // Step 4: FAQ chat
+            this.$chatSend.addEventListener( 'click', () => this.#handleChatSubmit() );
+            this.$chatInput.addEventListener( 'keydown', e => {
+                if ( e.key === 'Enter' && ! e.shiftKey ) {
+                    e.preventDefault();
+                    this.#handleChatSubmit();
                 }
-            });
+            } );
         }
 
-        /* ---------------------------------------------------------------
-         * Quick Replies
-         * --------------------------------------------------------------- */
+        // ---------------------------------------------------------------
+        // Step Rendering
+        // ---------------------------------------------------------------
 
-        #renderQuickReplies() {
-            const replies = [
-                "What services do you offer?",
-                "How do I schedule a consultation?",
-                "Tell me about retirement planning"
-            ];
-            
-            this.$quickRep.innerHTML = replies.map(r => 
-                `<button class="coachproof-chat-quick-reply">${r}</button>`
-            ).join('');
+        #renderStep() {
+            // Hide all panels.
+            this.#root.querySelectorAll( '.coachproof-intake-panel' ).forEach( el => {
+                el.classList.remove( 'coachproof-intake-panel--active' );
+            } );
+
+            // Show the active panel.
+            const active = this.#root.querySelector( `#coachproof-step-${this.#step}` );
+            if ( active ) {
+                active.classList.add( 'coachproof-intake-panel--active' );
+            }
+
+            // Restore any saved values into form fields.
+            if ( this.#step === 'collect_name_age' ) {
+                if ( this.#leadProfile.name ) this.$inputName.value = this.#leadProfile.name;
+                if ( this.#leadProfile.age  ) this.$inputAge.value  = this.#leadProfile.age;
+            }
+            if ( this.#step === 'collect_occupation' && this.#leadProfile.occupation ) {
+                this.$inputOcc.value = this.#leadProfile.occupation;
+            }
         }
 
-        #handleQuickReply(text) {
-            this.$quickRep.remove(); // Remove quick replies after selecting one
-            
-            this.$input.value = text;
-            this.#handleSubmit();
-        }
+        // ---------------------------------------------------------------
+        // Window Toggle
+        // ---------------------------------------------------------------
 
-        /* ---------------------------------------------------------------
-         * Window Toggle
-         * --------------------------------------------------------------- */
+        #hasShownWelcome = false;
 
         #toggleWindow() {
             const isOpen = this.$toggle.getAttribute( 'aria-expanded' ) === 'true';
-            this.$toggle.setAttribute( 'aria-expanded', String( !isOpen ) );
-            this.$window.classList.toggle( 'coachproof-chat-window--open', !isOpen );
+            this.$toggle.setAttribute( 'aria-expanded', String( ! isOpen ) );
+            this.$window.classList.toggle( 'coachproof-chat-window--open', ! isOpen );
 
-            if ( !isOpen ) {
-                this.$input.focus();
+            // Show welcome message on first open.
+            if ( ! isOpen && ! this.#hasShownWelcome ) {
+                this.#hasShownWelcome = true;
+
+                if ( this.#step === 'faq_mode' ) {
+                    // Returning user — already completed intake.
+                    this.#appendMessage( `Welcome back! Feel free to ask me anything about our services.`, 'bot' );
+                } else {
+                    // New user — starting intake.
+                    this.#appendMessage(
+                        `👋 Hi there! I'm your financial advisor assistant.\n\nBefore I can recommend the best package for you, I just need a few quick details. Let's start!`,
+                        'bot'
+                    );
+                }
             }
         }
 
-        /* ---------------------------------------------------------------
-         * State Machine
-         * --------------------------------------------------------------- */
+        // ---------------------------------------------------------------
+        // Intake Step Handlers
+        // ---------------------------------------------------------------
 
-        /**
-         * Transition to a new UI state.
-         *
-         * @param {string} newState
-         */
-        #setState( newState ) {
-            this.#state = newState;
-            this.#root.setAttribute( 'data-ui-state', newState );
+        #submitNameAge() {
+            const name = this.$inputName.value.trim();
+            const age  = parseInt( this.$inputAge.value, 10 );
 
-            const isInteractive = ( newState === 'idle' || newState === 'answer' );
-            this.$input.disabled = !isInteractive;
-            this.$send.disabled  = !isInteractive;
+            if ( name.length < 2 || name.length > 80 ) {
+                this.$errNameAge.textContent = 'Please enter your full name (2–80 characters).';
+                this.$inputName.focus();
+                return;
+            }
+            if ( isNaN( age ) || age < 1 || age > 120 ) {
+                this.$errNameAge.textContent = 'Please enter a valid age (1–120).';
+                this.$inputAge.focus();
+                return;
+            }
+
+            this.$errNameAge.textContent = '';
+            this.#leadProfile.name = name;
+            this.#leadProfile.age  = age;
+            this.#advanceTo( 'collect_occupation' );
         }
 
-        /* ---------------------------------------------------------------
-         * Submit Handler
-         * --------------------------------------------------------------- */
+        #submitOccupation() {
+            const occ = this.$inputOcc.value.trim();
 
-        async #handleSubmit() {
-            const message = this.$input.value.trim();
-            if ( !message || this.#state === 'loading' ) return;
+            if ( occ.length < 1 ) {
+                this.$errOcc.textContent = 'Please enter your occupation.';
+                this.$inputOcc.focus();
+                return;
+            }
 
-            // Render user message and clear input.
-            this.#appendMessage( message, 'user' );
-            this.$input.value = '';
+            this.$errOcc.textContent = '';
+            this.#leadProfile.occupation = occ;
+            this.#advanceTo( 'collect_objective' );
+        }
 
-            // Dispatch client event.
-            this.#root.dispatchEvent( new CustomEvent( 'sasha:submit', { detail: { message } } ) );
+        #submitObjective( value ) {
+            const validValues = OBJECTIVES.map( o => o.value );
+            if ( ! validValues.includes( value ) ) {
+                this.$errObj.textContent = 'Please select one of the options above.';
+                return;
+            }
 
-            // Transition to loading.
-            this.#setState( 'loading' );
-            const $loading = this.#showLoading();
+            this.$errObj.textContent = '';
+            this.#leadProfile.objective = value;
+
+            // Highlight selected button.
+            this.#root.querySelectorAll( '.coachproof-objective-btn' ).forEach( btn => {
+                btn.classList.toggle( 'coachproof-objective-btn--selected', btn.dataset.value === value );
+            } );
+
+            this.#advanceTo( 'faq_mode' );
+
+            // Post intake completion to the backend to get the greeting/recommendation.
+            this.#postIntakeComplete();
+        }
+
+        #advanceTo( step ) {
+            this.#step = step;
+            this.#saveSession();
+            this.#renderStep();
+        }
+
+        // ---------------------------------------------------------------
+        // Post intake complete — send one message to trigger recommendation
+        // ---------------------------------------------------------------
+
+        async #postIntakeComplete() {
+            this.#appendMessage( 'Thanks for those details! Let me find the right package for you…', 'bot' );
+            this.#setLoading( true );
 
             try {
-                const response = await fetch( this.#restUrl, {
-                    method: 'POST',
-                    headers: {
-                        'Content-Type': 'application/json',
-                        'X-WP-Nonce':   this.#nonce,
-                    },
-                    body: JSON.stringify( {
-                        message,
-                        conversation_id: this.#conversationId || '',
-                        page_context:    window.location.pathname,
-                    } ),
-                } );
-
-                // Remove loading indicator.
-                $loading.remove();
-
-                const data = await response.json();
-
-                // Persist conversation_id for multi-turn.
-                if ( data.conversation_id ) {
-                    this.#conversationId = data.conversation_id;
-                }
-
-                // Route based on the ui_state from the backend contract.
-                switch ( data.ui_state ) {
-                    case 'answer':
-                        this.#appendMessage( data.reply_text, 'bot' );
-                        this.#setState( 'answer' );
-                        this.#root.dispatchEvent( new CustomEvent( 'sasha:success', { detail: data } ) );
-                        break;
-
-                    case 'auth-required':
-                        this.#appendMessage(
-                            data.reply_text || 'Please sign in to access this content.',
-                            'auth'
-                        );
-                        this.#setState( 'auth-required' );
-                        break;
-
-                    case 'escalation':
-                        this.#appendMessage(
-                            data.reply_text || 'Let me connect you with a real person.',
-                            'bot'
-                        );
-                        this.#setState( 'escalation' );
-                        this.#root.dispatchEvent( new CustomEvent( 'sasha:escalation', { detail: data } ) );
-                        break;
-
-                    case 'error':
-                    default:
-                        this.#appendMessage(
-                            data.reply_text || 'Something went wrong. Please try again.',
-                            'error'
-                        );
-                        this.#setState( 'error' );
-                        this.#root.dispatchEvent( new CustomEvent( 'sasha:error', { detail: data } ) );
-                        break;
-                }
-
+                const data = await this.#post( 'I have completed the intake. Based on my profile, please recommend the most suitable coaching or training module and let me know what my options are.' );
+                this.#setLoading( false );
+                this.#handleServerResponse( data );
             } catch ( err ) {
-                // Network-level failure.
-                $loading.remove();
-                this.#appendMessage( 'Unable to reach the server. Please check your connection.', 'error' );
-                this.#setState( 'error' );
-                this.#root.dispatchEvent( new CustomEvent( 'sasha:error', { detail: { error: err.message } } ) );
-            }
-
-            // After rendering, re-enable input for subsequent messages.
-            if ( this.#state === 'answer' || this.#state === 'error' ) {
-                this.#setState( 'idle' );
+                this.#setLoading( false );
+                this.#appendMessage( 'Unable to reach the server. Please try again.', 'error' );
             }
         }
 
-        /* ---------------------------------------------------------------
-         * DOM Helpers
-         * --------------------------------------------------------------- */
+        // ---------------------------------------------------------------
+        // FAQ Chat Submit
+        // ---------------------------------------------------------------
 
-        /**
-         * Append a message bubble to the chat.
-         *
-         * @param {string} text
-         * @param {'user'|'bot'|'error'|'auth'} type
-         */
+        async #handleChatSubmit() {
+            if ( this.#isLoading ) return;
+            const message = this.$chatInput.value.trim();
+            if ( ! message ) return;
+
+            this.$chatInput.value = '';
+            this.#appendMessage( message, 'user' );
+            this.#setLoading( true );
+
+            try {
+                const data = await this.#post( message );
+                this.#setLoading( false );
+                this.#handleServerResponse( data );
+            } catch ( err ) {
+                this.#setLoading( false );
+                this.#appendMessage( 'Unable to reach the server. Please check your connection.', 'error' );
+            }
+        }
+
+        // ---------------------------------------------------------------
+        // Server Response Handler
+        // ---------------------------------------------------------------
+
+        #handleServerResponse( data ) {
+            // Persist conversation_id (Thread ID) for multi-turn.
+            if ( data.conversation_id ) {
+                this.#conversationId = data.conversation_id;
+                this.#saveSession();
+            }
+
+            // If the server disagrees with client step, correct it.
+            const actions = data.actions || {};
+            if ( actions.current_step && STEPS.includes( actions.current_step ) ) {
+                if ( actions.current_step !== this.#step ) {
+                    this.#step = actions.current_step;
+                    this.#renderStep();
+                    this.#saveSession();
+                }
+            }
+
+            switch ( data.ui_state ) {
+                case 'intake':
+                    // Server gated the response — render the prompt as a bot message.
+                    this.#appendMessage( data.reply_text, 'bot' );
+
+                    // Sync step if server corrects us.
+                    if ( actions.current_step && actions.current_step !== this.#step ) {
+                        this.#step = actions.current_step;
+                        this.#renderStep();
+                        this.#saveSession();
+                    }
+                    break;
+
+                case 'answer':
+                    this.#appendMessage( data.reply_text, 'bot' );
+                    // Show source citations if available.
+                    if ( actions.sources && actions.sources.length > 0 ) {
+                        this.#appendSources( actions.sources );
+                    }
+                    break;
+
+                case 'escalation':
+                    this.#appendMessage( data.reply_text || 'Let me connect you with our team.', 'bot' );
+                    break;
+
+                case 'error':
+                default:
+                    this.#appendMessage( data.reply_text || 'Something went wrong. Please try again.', 'error' );
+                    break;
+            }
+        }
+
+        // ---------------------------------------------------------------
+        // REST Communication
+        // ---------------------------------------------------------------
+
+        async #post( message ) {
+            const response = await fetch( this.#restUrl, {
+                method:  'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                    'X-WP-Nonce':   this.#nonce,
+                },
+                body: JSON.stringify( {
+                    message,
+                    conversation_id: this.#conversationId || '',
+                    page_context:    window.location.pathname,
+                    lead_profile:    this.#leadProfile,
+                } ),
+            } );
+
+            if ( ! response.ok && response.status !== 200 ) {
+                throw new Error( `HTTP ${response.status}` );
+            }
+
+            return response.json();
+        }
+
+        // ---------------------------------------------------------------
+        // DOM Helpers
+        // ---------------------------------------------------------------
+
         #appendMessage( text, type ) {
             const el = document.createElement( 'div' );
             el.classList.add( 'coachproof-chat-msg', `coachproof-chat-msg--${type}` );
@@ -293,32 +486,57 @@
             this.$messages.scrollTop = this.$messages.scrollHeight;
         }
 
+        #setLoading( state ) {
+            this.#isLoading = state;
+
+            if ( state ) {
+                const el = document.createElement( 'div' );
+                el.id = 'coachproof-loading';
+                el.classList.add( 'coachproof-chat-loading' );
+                el.innerHTML = `
+                    <span class="coachproof-chat-loading__dot"></span>
+                    <span class="coachproof-chat-loading__dot"></span>
+                    <span class="coachproof-chat-loading__dot"></span>
+                `;
+                this.$messages.appendChild( el );
+                this.$messages.scrollTop = this.$messages.scrollHeight;
+            } else {
+                const el = document.getElementById( 'coachproof-loading' );
+                if ( el ) el.remove();
+            }
+        }
+
         /**
-         * Show the loading dots indicator.
-         *
-         * @returns {HTMLElement} The loading element (caller removes it).
+         * Append a source citation footer under a bot message.
+         * @param {string[]} sources
          */
-        #showLoading() {
+        #appendSources( sources ) {
             const el = document.createElement( 'div' );
-            el.classList.add( 'coachproof-chat-loading' );
-            el.innerHTML = `
-                <span class="coachproof-chat-loading__dot"></span>
-                <span class="coachproof-chat-loading__dot"></span>
-                <span class="coachproof-chat-loading__dot"></span>
-            `;
+            el.classList.add( 'coachproof-chat-sources' );
+            el.innerHTML = `<span class="coachproof-sources-label">📄 Sources:</span> ${sources.map( s => `<span class="coachproof-source-tag">${this.#escapeHtml(s)}</span>` ).join( '' )}`;
             this.$messages.appendChild( el );
             this.$messages.scrollTop = this.$messages.scrollHeight;
-            return el;
+        }
+
+        /**
+         * Simple HTML escape.
+         * @param {string} str
+         * @return {string}
+         */
+        #escapeHtml( str ) {
+            const div = document.createElement( 'div' );
+            div.textContent = str;
+            return div.innerHTML;
         }
     }
 
-    /* -------------------------------------------------------------------
-     * Auto-initialise on DOMContentLoaded
-     * ------------------------------------------------------------------- */
+    // ---------------------------------------------------------------
+    // Auto-initialise on DOMContentLoaded
+    // ---------------------------------------------------------------
     document.addEventListener( 'DOMContentLoaded', () => {
         const root = document.getElementById( 'coachproof-ai' );
         if ( root ) {
-            new CoachProofAI( root );
+            new CoachProofWidget( root );
         }
     } );
 
